@@ -97,7 +97,7 @@ public class DependencyPublisher extends AbstractMojo {
                 for (DependencyNode node : nodes) {
                     getLog().info(String.format("groupId: %s artifactId: %s version %s", node.getArtifact().getGroupId(), node.getArtifact().getArtifactId(), node.getArtifact().getVersion()));
                 }
-                getLog().info("End of listing the dependencies");
+                getLog().info("End of listing the "+ nodes.size() +" dependencies");
 
             } catch (DependencyGraphBuilderException ex) {
                 getLog().error("Got an error when building dependency graph: " + ex.getMessage());
