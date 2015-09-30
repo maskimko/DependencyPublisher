@@ -9,6 +9,7 @@ import edu.emory.mathcs.backport.java.util.Arrays;
 import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -184,8 +185,14 @@ public class MavenHttpClient {
       //Example of url http://localhost:8081/nexus/service/local/artifact/maven/content
         
         File af = artifact.getFile();
+        String pathOf = artifact.getRepository().pathOf(artifact);
         if (af == null){
-            getLog().error("Artifact " + artifact.getArtifactId() + " has no file");
+            String pathOfArtifact = artifact.getRepository().pathOf(artifact);
+            getLog().debug("Path of artifact is " + pathOfArtifact);
+            af = Paths.get(pathOfArtifact).toFile();
+            if (af == null) {
+                getLog().error("Artifact " + artifact.getArtifactId() + " has no file");
+            }
             return;
         }
         String groupId = artifact.getGroupId();
