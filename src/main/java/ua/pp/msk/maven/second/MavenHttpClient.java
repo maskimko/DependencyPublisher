@@ -11,21 +11,22 @@ import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import org.apache.http.HttpEntity;
 import org.apache.http.NameValuePair;
 import org.apache.http.StatusLine;
+import org.apache.http.auth.AuthenticationException;
+import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.message.BasicNameValuePair;
 import org.apache.http.client.entity.UrlEncodedFormEntity;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.entity.ContentType;
+import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.util.EntityUtils;
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.logging.Log;
-
+import org.apache.http.entity.mime.MultipartEntityBuilder;
 /**
  *
  * @author Maksym Shkolnyi aka maskimko
@@ -37,6 +38,8 @@ public class MavenHttpClient {
     private List<NameValuePair> urlParams = new ArrayList<NameValuePair>();
     private Log log;
     private String repository;
+    private String username;
+    private String password;
 
     public MavenHttpClient(String url) {
         this.url = url;
@@ -83,58 +86,103 @@ public class MavenHttpClient {
     public void setRepository(String repository) {
         this.repository = repository;
     }
-    
-    public void execute() {
+
+    public String getUsername() {
+        return username;
+    }
+
+    public void setUsername(String username) {
+        this.username = username;
+    }
+
+    public String getPassword() {
+        return password;
+    }
+
+    public void setPassword(String password) {
+        this.password = password;
+    }
+
+    private  int execute(File file) {
         CloseableHttpClient client = HttpClientBuilder.create().build();
+        int status = -1;
         try {
             HttpPost post = new HttpPost(url);
 
             post.setHeader("User-Agent", userAgent);
 
+          
+            if (username != null && username.length() != 0 && password != null) {
+                UsernamePasswordCredentials creds = new UsernamePasswordCredentials(username, password);
+                post.addHeader(new BasicScheme().authenticate(creds, post, null));
+            }
+            if (file == null) {
             if (!urlParams.isEmpty()) {
                 post.setEntity(new UrlEncodedFormEntity(urlParams));
+            }
+            } else {
+               MultipartEntityBuilder builder = MultipartEntityBuilder.create() ;
+               builder.addBinaryBody("file", file, ContentType.DEFAULT_BINARY, file.getName());
             }
             CloseableHttpResponse response = client.execute(post);
             HttpEntity entity = response.getEntity();
             StatusLine statusLine = response.getStatusLine();
+            status = statusLine.getStatusCode();
             getLog().info("Response status code: " + statusLine.getStatusCode() + " " + statusLine.getReasonPhrase());
 //Perhaps I need to parse html           
 //String html = EntityUtils.toString(entity);
 
+        } catch (AuthenticationException ex) {
+            if (log != null) {
+                getLog().error(ex.getMessage());
+            }
         } catch (UnsupportedEncodingException ex) {
             if (log != null) {
                 getLog().error(ex.getMessage());
             }
         } catch (IOException ex) {
-            getLog().error(ex.getMessage());
+            if (log != null) { 
+                getLog().error(ex.getMessage());
+            }
+        } finally {
+            try {
+                client.close();
+            } catch (IOException ex) {
+                if (log != null) {
+                    getLog().error("Cannot close http client: " + ex.getMessage());
+                }
+            }
         }
+        return status;
     }
-    
-    public void promote(Artifact artifact){
+
+    public void promote(Artifact artifact) {
         File af = artifact.getFile();
         String groupId = artifact.getGroupId();
         String artifactId = artifact.getArtifactId();
         String version = artifact.getVersion();
-        if( repository == null || repository.length() == 0) {
+        if (repository == null || repository.length() == 0) {
             getLog().error("Repository cannot be null value");
             //TODO throw exception here
             return;
-        } else {        addUrlParameter("r", repository); }
+        } else {
+            addUrlParameter("r", repository);
+        }
         addUrlParameter("hasPom", "false");
         String[] splitName = af.getName().toLowerCase().split(".");
-                String extension = splitName[splitName.length-1];
-                if (!extension.equals("jar") || !extension.equals("war") ||  !extension.equals("ear")){
-                    getLog().error(extension + " isnot supported. Currently only jar, war, ear file extensions are supported");
-                    //TODO throw exception here
-                    return;
-                }
-                addUrlParameter("e", extension);
-                addUrlParameter("g", groupId);
-                addUrlParameter("a", artifactId);
-                addUrlParameter("v", version);
-                //Packaging should be 
-                addUrlParameter("p", extension);
-                //AUTHENTICATE here
+        String extension = splitName[splitName.length - 1];
+        if (!extension.equals("jar") || !extension.equals("war") || !extension.equals("ear")) {
+            getLog().error(extension + " isnot supported. Currently only jar, war, ear file extensions are supported");
+            //TODO throw exception here
+            return;
+        }
+        addUrlParameter("e", extension);
+        addUrlParameter("g", groupId);
+        addUrlParameter("a", artifactId);
+        addUrlParameter("v", version);
+        //Packaging should be 
+        addUrlParameter("p", extension);
+        //AUTHENTICATE here
     }
 
 }
