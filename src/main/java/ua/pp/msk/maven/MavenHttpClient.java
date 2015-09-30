@@ -184,6 +184,10 @@ public class MavenHttpClient {
       //Example of url http://localhost:8081/nexus/service/local/artifact/maven/content
         
         File af = artifact.getFile();
+        if (af == null){
+            getLog().error("Artifact " + artifact.getArtifactId() + " has no file");
+            return;
+        }
         String groupId = artifact.getGroupId();
         String artifactId = artifact.getArtifactId();
         String version = artifact.getVersion();
