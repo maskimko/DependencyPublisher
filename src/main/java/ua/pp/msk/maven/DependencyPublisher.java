@@ -3,10 +3,9 @@
  * To change this template file, choose Tools | Templates
  * and open the template in the editor.
  */
-package ua.pp.msk.maven.second;
+package ua.pp.msk.maven;
 
 //import com.jcabi.aether.Aether;
-import java.io.File;
 import java.util.List;
 import org.apache.maven.artifact.resolver.filter.ArtifactFilter;
 import org.apache.maven.plugin.AbstractMojo;
@@ -39,6 +38,17 @@ import org.apache.maven.shared.dependency.graph.traversal.CollectingDependencyNo
  */
 @Mojo(name = "publish", defaultPhase = LifecyclePhase.INSTALL)
 public class DependencyPublisher extends AbstractMojo {
+
+    @Parameter(required = true, readonly = true)
+    private String url;
+    @Parameter(required = true, readonly = true)
+    private String repositoryId;
+    @Parameter(required = true, readonly = true)
+    private String username;
+    @Parameter(required = true, readonly = true)
+    private String password;
+    @Parameter(defaultValue = "true", required = false, readonly = false)
+    private boolean promote;
 
     @Parameter(defaultValue = "${project}", required = true, readonly = true)
     private MavenProject mavenProject;
@@ -96,8 +106,20 @@ public class DependencyPublisher extends AbstractMojo {
                 getLog().info("Listing the dependencies");
                 for (DependencyNode node : nodes) {
                     getLog().info(String.format("groupId: %s artifactId: %s version %s", node.getArtifact().getGroupId(), node.getArtifact().getArtifactId(), node.getArtifact().getVersion()));
+                    //TODO insert here loginc to publish the artifacts
+                    if (promote) {
+                        MavenHttpClient mhc = new MavenHttpClient(url);
+                        mhc.setLog(getLog());
+                        mhc.setUsername(username);
+                        mhc.setPassword(password);
+                        mhc.setRepository(repositoryId);
+                        getLog().info(String.format("Promoting artifact %s", node.getArtifact().getArtifactId()));
+                        if (mhc != null) {
+                            mhc.promote(node.getArtifact());
+                        }
+                    }
                 }
-                getLog().info("End of listing the "+ nodes.size() +" dependencies");
+                getLog().info("End of listing the " + nodes.size() + " dependencies");
 
             } catch (DependencyGraphBuilderException ex) {
                 getLog().error("Got an error when building dependency graph: " + ex.getMessage());

@@ -1,4 +1,4 @@
-package ua.pp.msk.maven.second;
+package ua.pp.msk.maven;
 
 /*
  * Copyright 2001-2005 The Apache Software Foundation.
