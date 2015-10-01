@@ -7,6 +7,7 @@ package ua.pp.msk.maven;
 
 //import com.jcabi.aether.Aether;
 import java.util.List;
+import org.apache.maven.artifact.Artifact;
 import org.apache.maven.artifact.resolver.filter.ArtifactFilter;
 import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
@@ -22,6 +23,10 @@ import org.apache.maven.shared.dependency.graph.DependencyGraphBuilder;
 import org.apache.maven.shared.dependency.graph.DependencyGraphBuilderException;
 import org.apache.maven.shared.dependency.graph.DependencyNode;
 import org.apache.maven.shared.dependency.graph.traversal.CollectingDependencyNodeVisitor;
+import org.sonatype.aether.RepositorySystem;
+import org.sonatype.aether.RepositorySystemSession;
+import org.sonatype.aether.repository.RemoteRepository;
+import org.sonatype.aether.resolution.ArtifactResolutionException;
 import ua.pp.msk.maven.exceptions.ArtifactPromotingException;
 //import org.apache.maven.shared.dependency.graph.DependencyGraphBuilder;
 //import org.apache.maven.shared.dependency.graph.DependencyGraphBuilderException;
@@ -53,17 +58,27 @@ public class DependencyPublisher extends AbstractMojo {
 
     @Parameter(defaultValue = "${project}", required = true, readonly = true)
     private MavenProject mavenProject;
+
+    @Component
+    private RepositorySystemSession repoSession;
+
+    @Parameter(defaultValue = "${repositorySystemSession}", readonly = true)
+    private RepositorySystem repoSystem;
+
+    @Parameter(defaultValue = "${project.remotePluginRepositories}", readonly = true)
+    private List<RemoteRepository> remoteRepos;
+
     /*
      * jcabi Aether from Sonatype requires lots of dependencies
      * I think it should be removed in future.
      */
 //    @Parameter(defaultValue = "${repositorySystemSession}", readonly = true)
 //    private RepositorySystemSession repositorySystemSession;
-
     @Component
     private DependencyGraphBuilder dependencyGraphBuilder;
     private ArtifactFilter artifactFilter;
 
+    @Override
     public void execute() throws MojoExecutionException, MojoFailureException {
         String artifactId = mavenProject.getArtifactId();
         String groupId = mavenProject.getGroupId();
@@ -80,6 +95,7 @@ public class DependencyPublisher extends AbstractMojo {
                 }
             }
         }
+        PublishResolver pr = new PublishResolverJcabi(repoSession, repoSystem, remoteRepos, getLog());
         if (artifactFilter == null) {
             getLog().debug("Artifact filter is null. Continue with scope artifact filter");
             ScopeArtifactFilter scopeArtifactFilter = new ScopeArtifactFilter();
@@ -109,16 +125,20 @@ public class DependencyPublisher extends AbstractMojo {
                     getLog().info(String.format("groupId: %s artifactId: %s version %s", node.getArtifact().getGroupId(), node.getArtifact().getArtifactId(), node.getArtifact().getVersion()));
                     //TODO insert here loginc to publish the artifacts
                     if (promote) {
-                        MavenHttpClient mhc = new MavenHttpClient(url);
-                        mhc.setLog(getLog());
-                        mhc.setUsername(username);
-                        mhc.setPassword(password);
-                        mhc.setRepository(repositoryId);
-                        getLog().info(String.format("Promoting artifact %s:&s:%s", node.getArtifact().getGroupId(),node.getArtifact().getArtifactId(), node.getArtifact().getVersion()));
-                        try {  
-                        mhc.promote(node.getArtifact());
-                        } catch (ArtifactPromotingException ex){
+                        try {
+                            Artifact artifact = pr.resolve(node.getArtifact());
+                            MavenHttpClient mhc = new MavenHttpClient(url);
+                            mhc.setLog(getLog());
+                            mhc.setUsername(username);
+                            mhc.setPassword(password);
+                            mhc.setRepository(repositoryId);
+                            getLog().info(String.format("Promoting artifact %s:&s:%s", artifact.getGroupId(), artifact.getArtifactId(), artifact.getVersion()));
+                            //Promoting
+                            mhc.promote(artifact);
+                        } catch (ArtifactPromotingException ex) {
                             getLog().error("Cannot promote artifact", ex);
+                        } catch (ArtifactResolutionException ex) {
+                            getLog().error("Cannot resolve artifact", ex);
                         }
                     }
                 }

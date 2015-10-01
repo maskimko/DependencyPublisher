@@ -181,17 +181,7 @@ public class MavenHttpClient {
             if (log != null) {
                 getLog().debug("Trying to get the artifact repository...");
             }
-            ArtifactRepository ar = artifact.getRepository();
-            if (ar != null) {
-                String pathOfArtifact = ar.pathOf(artifact);
-                getLog().debug("Path of artifact is " + pathOfArtifact);
-                af = Paths.get(pathOfArtifact).toFile();
-                if (af == null) {
-                    throw new ArtifactPromotingException("Artifact " + artifact.getArtifactId() + " has no file");
-                }
-            } else {
-                throw new ArtifactPromotingException("It is impossible to get the filesystem location of artiifact, because artifact repository field is null value");
-            }
+            throw new ArtifactPromotingException("It is impossible to get the filesystem location of artiifact, because artifact repository field is null value");
 
         } else if (log != null) {
             getLog().debug("Artifact file " + af.getAbsolutePath());
