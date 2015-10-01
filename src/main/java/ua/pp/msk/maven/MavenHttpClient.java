@@ -8,15 +8,14 @@ package ua.pp.msk.maven;
 import edu.emory.mathcs.backport.java.util.Arrays;
 import java.io.File;
 import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import org.apache.http.HttpEntity;
+import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
 import org.apache.http.StatusLine;
-import org.apache.http.auth.AuthenticationException;
 import org.apache.http.auth.UsernamePasswordCredentials;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.message.BasicNameValuePair;
@@ -31,6 +30,8 @@ import org.apache.maven.plugin.logging.Log;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.entity.mime.content.FileBody;
 import org.apache.http.entity.mime.content.StringBody;
+import org.apache.maven.artifact.repository.ArtifactRepository;
+import ua.pp.msk.maven.exceptions.ArtifactPromotingException;
 
 /**
  *
@@ -55,7 +56,7 @@ public class MavenHttpClient {
     }
 
     public void setUrl(String url) {
-        if (url.contains("/nexus/service/local/artifact/maven/content")){
+        if (url.contains("/nexus/service/local/artifact/maven/content")) {
             this.url = url;
         } else {
             this.url = url.concat("/nexus/service/local/artifact/maven/content");
@@ -112,7 +113,7 @@ public class MavenHttpClient {
         this.password = password;
     }
 
-    private int execute(File file) {
+    private int execute(File file) throws ArtifactPromotingException {
         CloseableHttpClient client = HttpClientBuilder.create().build();
         int status = -1;
         try {
@@ -153,55 +154,53 @@ public class MavenHttpClient {
 //Perhaps I need to parse html           
 //String html = EntityUtils.toString(entity);
 
-        } catch (AuthenticationException ex) {
-            if (log != null) {
-                getLog().error(ex.getMessage());
-            }
-        } catch (UnsupportedEncodingException ex) {
-            if (log != null) {
-                getLog().error(ex.getMessage());
-            }
-        } catch (IOException ex) {
-            if (log != null) {
-                getLog().error(ex.getMessage());
-            }
+        } catch (Exception ex) {
+            throw new ArtifactPromotingException(ex);
         } finally {
             try {
                 client.close();
             } catch (IOException ex) {
-                if (log != null) {
-                    getLog().error("Cannot close http client: " + ex.getMessage());
-                }
+                throw new ArtifactPromotingException("Cannot close the http client", ex);
             }
         }
         return status;
     }
 
-    private int execute() {
+    private int execute() throws ArtifactPromotingException {
         return execute(null);
     }
 
-    public void promote(Artifact artifact) {
-      //Example of url http://localhost:8081/nexus/service/local/artifact/maven/content
-        
+    public void promote(Artifact artifact) throws ArtifactPromotingException {
+        //Example of url http://localhost:8081/nexus/service/local/artifact/maven/content
+        if (log != null) {
+            getLog().debug("Trying to promote the artifact...");
+        }
         File af = artifact.getFile();
-        String pathOf = artifact.getRepository().pathOf(artifact);
-        if (af == null){
-            String pathOfArtifact = artifact.getRepository().pathOf(artifact);
-            getLog().debug("Path of artifact is " + pathOfArtifact);
-            af = Paths.get(pathOfArtifact).toFile();
-            if (af == null) {
-                getLog().error("Artifact " + artifact.getArtifactId() + " has no file");
+
+        if (af == null) {
+            if (log != null) {
+                getLog().debug("Trying to get the artifact repository...");
             }
-            return;
+            ArtifactRepository ar = artifact.getRepository();
+            if (ar != null) {
+                String pathOfArtifact = ar.pathOf(artifact);
+                getLog().debug("Path of artifact is " + pathOfArtifact);
+                af = Paths.get(pathOfArtifact).toFile();
+                if (af == null) {
+                    throw new ArtifactPromotingException("Artifact " + artifact.getArtifactId() + " has no file");
+                }
+            } else {
+                throw new ArtifactPromotingException("It is impossible to get the filesystem location of artiifact, because artifact repository field is null value");
+            }
+
+        } else if (log != null) {
+            getLog().debug("Artifact file " + af.getAbsolutePath());
         }
         String groupId = artifact.getGroupId();
         String artifactId = artifact.getArtifactId();
         String version = artifact.getVersion();
         if (repository == null || repository.length() == 0) {
-            getLog().error("Repository cannot be null value");
-            //TODO throw exception here
-            return;
+            throw new ArtifactPromotingException("Repository cannot be null value");
         } else {
             addUrlParameter("r", repository);
         }
@@ -212,9 +211,7 @@ public class MavenHttpClient {
         getLog().debug("Split name: " + Arrays.toString(splitName));
         String extension = splitName[splitName.length - 1].trim();
         if (!extension.equals("jar") && !extension.equals("war") && !extension.equals("ear")) {
-            getLog().error(extension + " is not supported. Currently only jar, war, ear file extensions are supported");
-            //TODO throw exception here
-            return;
+            throw new ArtifactPromotingException(extension + " is not supported. Currently only jar, war, ear file extensions are supported");
         }
         addUrlParameter("e", extension);
         addUrlParameter("g", groupId);
@@ -223,13 +220,20 @@ public class MavenHttpClient {
         //Packaging should be 
         addUrlParameter("p", extension);
         int ec = execute(af);
-        if (ec >= 200 && ec < 300) {
-            if (log != null) {
-                getLog().info("Artifact has been promoted successfully");
-            }
-        } else if (log != null) {
-            getLog().error("Artifact promotion failed");
+        switch (ec) {
+            case HttpStatus.SC_OK:
+            case HttpStatus.SC_CREATED:
+            case HttpStatus.SC_ACCEPTED:
+                if (log != null) {
+                    getLog().info("Artifact has been promoted successfully");
+                }
+                break;
+            case HttpStatus.SC_BAD_REQUEST:
+                throw new ArtifactPromotingException("Bad request. Perhaps artifact already exists. Artifact promotion failed");
+            default:
+                throw new ArtifactPromotingException("Artifact promotion failed");
         }
+
     }
 
 }

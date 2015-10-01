@@ -22,6 +22,7 @@ import org.apache.maven.shared.dependency.graph.DependencyGraphBuilder;
 import org.apache.maven.shared.dependency.graph.DependencyGraphBuilderException;
 import org.apache.maven.shared.dependency.graph.DependencyNode;
 import org.apache.maven.shared.dependency.graph.traversal.CollectingDependencyNodeVisitor;
+import ua.pp.msk.maven.exceptions.ArtifactPromotingException;
 //import org.apache.maven.shared.dependency.graph.DependencyGraphBuilder;
 //import org.apache.maven.shared.dependency.graph.DependencyGraphBuilderException;
 //import org.apache.maven.shared.dependency.graph.DependencyNode;
@@ -113,9 +114,11 @@ public class DependencyPublisher extends AbstractMojo {
                         mhc.setUsername(username);
                         mhc.setPassword(password);
                         mhc.setRepository(repositoryId);
-                        getLog().info(String.format("Promoting artifact %s", node.getArtifact().getArtifactId()));
-                        if (mhc != null) {
-                            mhc.promote(node.getArtifact());
+                        getLog().info(String.format("Promoting artifact %s:&s:%s", node.getArtifact().getGroupId(),node.getArtifact().getArtifactId(), node.getArtifact().getVersion()));
+                        try {  
+                        mhc.promote(node.getArtifact());
+                        } catch (ArtifactPromotingException ex){
+                            getLog().error("Cannot promote artifact", ex);
                         }
                     }
                 }
