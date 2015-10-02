@@ -9,13 +9,16 @@ import edu.emory.mathcs.backport.java.util.Arrays;
 import ua.pp.msk.maven.exceptions.ArtifactPromotingException;
 
 import java.io.File;
+import java.io.FilenameFilter;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import org.apache.http.HttpEntity;
+import org.apache.http.HttpStatus;
 import org.apache.http.NameValuePair;
 import org.apache.http.StatusLine;
 import org.apache.http.auth.AuthenticationException;
@@ -41,191 +44,234 @@ import org.apache.http.entity.mime.content.StringBody;
  */
 public class MavenHttpClient {
 
-    private String url;
-    private String userAgent = "Maven Dependency pushing plugin";
-    private List<NameValuePair> urlParams = new ArrayList<NameValuePair>();
-    private Log log;
-    private String repository;
-    private String username;
-    private String password;
-    private static ArtifactRepository artifactRepository;
-    public MavenHttpClient(String url) {
-        this.url = url;
-    }
+	private String url;
+	private String userAgent = "Maven Dependency pushing plugin";
+	private List<NameValuePair> urlParams = new ArrayList<NameValuePair>();
+	private Log log;
+	private String repository;
+	private String username;
+	private String password;
+	private ArtifactRepository artifactRepository;
 
-    public String getUrl() {
-        return url;
-    }
+	public MavenHttpClient(String url, ArtifactRepository artifactRepository) {
+		this.url = url;
+		this.artifactRepository = artifactRepository;
+	}
 
-    public void setUrl(String url) {
-        if (url.contains("/nexus/service/local/artifact/maven/content")){
-            this.url = url;
-        } else {
-            this.url = url.concat("/nexus/service/local/artifact/maven/content");
-        }
-    }
+	public String getUrl() {
+		return url;
+	}
 
-    public String getUserAgent() {
-        return userAgent;
-    }
+	public void setUrl(String url) {
+		if (url.contains("/nexus/service/local/artifact/maven/content")) {
+			this.url = url;
+		} else {
+			this.url = url.concat("/nexus/service/local/artifact/maven/content");
+		}
+	}
 
-    public void setUserAgent(String userAgent) {
-        this.userAgent = userAgent;
-    }
+	public String getUserAgent() {
+		return userAgent;
+	}
 
-    public void addUrlParameter(String key, String value) {
-        urlParams.add(new BasicNameValuePair(key, value));
-    }
+	public void setUserAgent(String userAgent) {
+		this.userAgent = userAgent;
+	}
 
-    public void addUrlParameters(Map<String, String> params) {
-        for (Map.Entry<String, String> me : params.entrySet()) {
-            addUrlParameter(me.getKey(), me.getValue());
-        }
-    }
+	public void addUrlParameter(String key, String value) {
+		for (NameValuePair bsv: urlParams){
+			if (bsv.getName().equals(key)){
+				urlParams.remove(bsv);
+			}
+		}
+		urlParams.add(new BasicNameValuePair(key, value));
+	}
 
-    public Log getLog() {
-        return log;
-    }
+	public void addUrlParameters(Map<String, String> params) {
+		for (Map.Entry<String, String> me : params.entrySet()) {
+			addUrlParameter(me.getKey(), me.getValue());
+		}
+	}
 
-    public void setLog(Log log) {
-        this.log = log;
-    }
+	public ArtifactRepository getArtifactRepository() {
+		return artifactRepository;
+	}
 
-    public String getRepository() {
-        return repository;
-    }
+	public void setArtifactRepository(ArtifactRepository artifactRepository) {
+		this.artifactRepository = artifactRepository;
+	}
 
-    public void setRepository(String repository) {
-        this.repository = repository;
-    }
+	public Log getLog() {
+		return log;
+	}
 
-    public String getUsername() {
-        return username;
-    }
+	public void setLog(Log log) {
+		this.log = log;
+	}
 
-    public void setUsername(String username) {
-        this.username = username;
-    }
+	public String getRepository() {
+		return repository;
+	}
 
-    public String getPassword() {
-        return password;
-    }
+	public void setRepository(String repository) {
+		this.repository = repository;
+	}
 
-    public void setPassword(String password) {
-        this.password = password;
-    }
+	public String getUsername() {
+		return username;
+	}
 
-    private int execute(File file) throws ArtifactPromotingException {
-        CloseableHttpClient client = HttpClientBuilder.create().build();
-        int status = -1;
-        try {
-            getLog().debug("Connecting to URL: " + url);
-            HttpPost post = new HttpPost(url);
+	public void setUsername(String username) {
+		this.username = username;
+	}
 
-            post.setHeader("User-Agent", userAgent);
+	public String getPassword() {
+		return password;
+	}
 
-            if (username != null && username.length() != 0 && password != null) {
-                UsernamePasswordCredentials creds = new UsernamePasswordCredentials(username, password);
-                post.addHeader(new BasicScheme().authenticate(creds, post, null));
-            }
-            if (file == null) {
-                if (!urlParams.isEmpty()) {
-                    post.setEntity(new UrlEncodedFormEntity(urlParams));
-                }
-            } else {
-                MultipartEntityBuilder builder = MultipartEntityBuilder.create();
+	public void setPassword(String password) {
+		this.password = password;
+	}
 
-                if (!urlParams.isEmpty()) {
-                    for (NameValuePair nvp : urlParams) {
-                        builder.addPart(nvp.getName(), new StringBody(nvp.getValue(), ContentType.MULTIPART_FORM_DATA));
-                    }
-                }
-                FileBody fb = new FileBody(file);
-                //Not used because of form submission
-                //builder.addBinaryBody("file", file, ContentType.DEFAULT_BINARY, file.getName());
-                builder.addPart("file", fb);
-                HttpEntity sendEntity = builder.build();
-                post.setEntity(sendEntity);
-            }
+	private int execute(File file) throws ArtifactPromotingException {
+		CloseableHttpClient client = HttpClientBuilder.create().build();
+		int status = -1;
+		try {
+			getLog().debug("Connecting to URL: " + url);
+			HttpPost post = new HttpPost(url);
 
-            CloseableHttpResponse response = client.execute(post);
-            HttpEntity entity = response.getEntity();
-            StatusLine statusLine = response.getStatusLine();
-            status = statusLine.getStatusCode();
-            getLog().info("Response status code: " + statusLine.getStatusCode() + " " + statusLine.getReasonPhrase());
-//Perhaps I need to parse html           
-//String html = EntityUtils.toString(entity);
+			post.setHeader("User-Agent", userAgent);
 
-        } catch (AuthenticationException ex) {
-           throw new ArtifactPromotingException(ex);
-        } catch (UnsupportedEncodingException ex) {
-            throw new ArtifactPromotingException(ex);
-        } catch (IOException ex) {
-            throw new ArtifactPromotingException(ex);
-        } finally {
-            try {
-                client.close();
-            } catch (IOException ex) {
-                throw new ArtifactPromotingException("Cannot close http client", ex);
-            }
-        }
-        return status;
-    }
+			if (username != null && username.length() != 0 && password != null) {
+				UsernamePasswordCredentials creds = new UsernamePasswordCredentials(username, password);
+				post.addHeader(new BasicScheme().authenticate(creds, post, null));
+			}
+			if (file == null) {
+				if (!urlParams.isEmpty()) {
+					post.setEntity(new UrlEncodedFormEntity(urlParams));
+				}
+			} else {
+				MultipartEntityBuilder builder = MultipartEntityBuilder.create();
 
-    private int execute() throws ArtifactPromotingException{
-        return execute(null);
-    }
+				if (!urlParams.isEmpty()) {
+					for (NameValuePair nvp : urlParams) {
+						builder.addPart(nvp.getName(), new StringBody(nvp.getValue(), ContentType.MULTIPART_FORM_DATA));
+					}
+				}
+				FileBody fb = new FileBody(file);
+				// Not used because of form submission
+				// builder.addBinaryBody("file", file,
+				// ContentType.DEFAULT_BINARY, file.getName());
+				builder.addPart("file", fb);
+				HttpEntity sendEntity = builder.build();
+				post.setEntity(sendEntity);
+			}
 
-    public void promote(Artifact artifact) throws ArtifactPromotingException {
-      //Example of url http://localhost:8081/nexus/service/local/artifact/maven/content
-        
-        File af = artifact.getFile();
-        if (artifact.getRepository() != null) {
-        	if (getLog() != null ) getLog().debug("Updating the repository to: " + artifact.getRepository().getId());
-        	artifactRepository = artifact.getRepository();
-        	
-        }
-        
-        if (af == null){
-            String pathOfArtifact = artifactRepository.pathOf(artifact);
-            getLog().debug("Path of artifact is " + pathOfArtifact);
-            af = Paths.get(pathOfArtifact).toFile();
-            if (af == null) {
-            	throw new ArtifactPromotingException("Artifact " + artifact.getArtifactId() + " has no file");
-            }
-        }
-        String groupId = artifact.getGroupId();
-        String artifactId = artifact.getArtifactId();
-        String version = artifact.getVersion();
-        if (repository == null || repository.length() == 0) {
-            getLog().error("Repository cannot be null value");
-           throw new ArtifactPromotingException("Repository cannot be null value");
-        } else {
-            addUrlParameter("r", repository);
-        }
-        addUrlParameter("hasPom", "false");
-        String fileName = af.getName();
-        getLog().debug("Processing artifact file " + fileName);
-        String[] splitName = fileName.toLowerCase().split("\\.");
-        getLog().debug("Split name: " + Arrays.toString(splitName));
-        String extension = splitName[splitName.length - 1].trim();
-        if (!extension.equals("jar") && !extension.equals("war") && !extension.equals("ear")) {
-            throw new ArtifactPromotingException(extension + " is not supported. Currently only jar, war, ear file extensions are supported");
-        }
-        addUrlParameter("e", extension);
-        addUrlParameter("g", groupId);
-        addUrlParameter("a", artifactId);
-        addUrlParameter("v", version);
-        //Packaging should be 
-        addUrlParameter("p", extension);
-        int ec = execute(af);
-        if (ec >= 200 && ec < 300) {
-            if (log != null) {
-                getLog().info("Artifact has been promoted successfully");
-            }
-        } else if (log != null) {
-            throw new ArtifactPromotingException("Artifact promotion failed");
-        }
-    }
+			CloseableHttpResponse response = client.execute(post);
+			HttpEntity entity = response.getEntity();
+			StatusLine statusLine = response.getStatusLine();
+			status = statusLine.getStatusCode();
+			getLog().info("Response status code: " + statusLine.getStatusCode() + " " + statusLine.getReasonPhrase());
+			// Perhaps I need to parse html
+			// String html = EntityUtils.toString(entity);
+
+		} catch (AuthenticationException ex) {
+			throw new ArtifactPromotingException(ex);
+		} catch (UnsupportedEncodingException ex) {
+			throw new ArtifactPromotingException(ex);
+		} catch (IOException ex) {
+			throw new ArtifactPromotingException(ex);
+		} finally {
+			try {
+				client.close();
+			} catch (IOException ex) {
+				throw new ArtifactPromotingException("Cannot close http client", ex);
+			}
+		}
+		return status;
+	}
+
+	private int execute() throws ArtifactPromotingException {
+		return execute(null);
+	}
+
+	public void promote(Artifact artifact) throws ArtifactPromotingException {
+		// Example of url
+		// http://localhost:8081/nexus/service/local/artifact/maven/content
+		List<File> artifactFiles = new LinkedList<File>();
+		if (artifact.getFile() != null) {
+			artifactFiles.add(artifact.getFile());
+		}
+
+		final String groupId = artifact.getGroupId();
+		String[] groupIdComponents = groupId.split("\\.");
+		final String artifactId = artifact.getArtifactId();
+		final String version = artifact.getVersion();
+		if (artifactFiles.isEmpty()) {
+			StringBuilder sb = new StringBuilder(artifactRepository.getBasedir());
+			for (int i = 0; i < groupIdComponents.length; i++) {
+				sb.append(File.separator);
+				sb.append(groupIdComponents[i]);
+			}
+			sb.append(File.separator);
+			sb.append(artifactId);
+			sb.append(File.separator);
+			sb.append(version);
+			File directory = new File(sb.toString());
+			if (directory.isDirectory()) {
+				File[] artifacts = directory.listFiles(new FilenameFilter() {
+
+					public boolean accept(File dir, String name) {
+						if (name.endsWith("jar") || name.endsWith("war") || name.endsWith("ear")) {
+							if (name.contains(version)) {
+								if (name.startsWith(artifactId))
+									return true;
+							}
+						}
+						return false;
+					}
+				});
+				artifactFiles.addAll(Arrays.asList(artifacts));
+			} else {
+				throw new ArtifactPromotingException(String.format(
+						"Artifact file is null of %s artifact. Cannot locate it in the %s directory, because it is not a directory"));
+			}
+
+		}
+		if (repository == null || repository.length() == 0) {
+			getLog().error("Repository cannot be null value");
+			throw new ArtifactPromotingException("Repository cannot be null value");
+		} else {
+			addUrlParameter("r", repository);
+		}
+		addUrlParameter("hasPom", "false");
+
+		
+		addUrlParameter("g", groupId);
+		addUrlParameter("a", artifactId);
+		addUrlParameter("v", version);
+		// Packaging should be
+		for (File af : artifactFiles) {
+			String fileName = af.getName();
+			getLog().debug("Processing artifact file " + fileName);
+			String[] splitName = fileName.toLowerCase().split("\\.");
+			getLog().debug("Split name: " + Arrays.toString(splitName));
+			String extension = splitName[splitName.length - 1].trim();
+			if (!extension.equals("jar") && !extension.equals("war") && !extension.equals("ear")) {
+				throw new ArtifactPromotingException(
+						extension + " is not supported. Currently only jar, war, ear file extensions are supported");
+			}
+			addUrlParameter("p", extension);
+			addUrlParameter("e", extension);
+			int ec = execute(af);
+			if (ec == HttpStatus.SC_OK || ec == HttpStatus.SC_CREATED) {
+				if (log != null) {
+					getLog().info("Artifact has been promoted successfully");
+				}
+			} else if (log != null) {
+				throw new ArtifactPromotingException("Artifact promotion failed");
+			}
+		}
+	}
 
 }

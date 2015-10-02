@@ -4,7 +4,7 @@
 
   <groupId>ua.pp.msk.maven</groupId>
   <artifactId>dependency-publish-maven-plugin</artifactId>
-  <version>0.4</version>
+  <version>0.7</version>
   <packaging>maven-plugin</packaging>
 
   <name>Dependency publish maven pluing</name>
