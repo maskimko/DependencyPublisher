@@ -6,6 +6,8 @@
 package ua.pp.msk.maven;
 
 import edu.emory.mathcs.backport.java.util.Arrays;
+import ua.pp.msk.maven.exceptions.ArtifactPromotingException;
+
 import java.io.File;
 import java.io.IOException;
 import java.io.UnsupportedEncodingException;
@@ -27,6 +29,7 @@ import org.apache.http.entity.ContentType;
 import org.apache.http.impl.auth.BasicScheme;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.maven.artifact.Artifact;
+import org.apache.maven.artifact.repository.ArtifactRepository;
 import org.apache.maven.plugin.logging.Log;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.entity.mime.content.FileBody;
@@ -45,7 +48,7 @@ public class MavenHttpClient {
     private String repository;
     private String username;
     private String password;
-
+    private static ArtifactRepository artifactRepository;
     public MavenHttpClient(String url) {
         this.url = url;
     }
@@ -112,7 +115,7 @@ public class MavenHttpClient {
         this.password = password;
     }
 
-    private int execute(File file) {
+    private int execute(File file) throws ArtifactPromotingException {
         CloseableHttpClient client = HttpClientBuilder.create().build();
         int status = -1;
         try {
@@ -154,54 +157,49 @@ public class MavenHttpClient {
 //String html = EntityUtils.toString(entity);
 
         } catch (AuthenticationException ex) {
-            if (log != null) {
-                getLog().error(ex.getMessage());
-            }
+           throw new ArtifactPromotingException(ex);
         } catch (UnsupportedEncodingException ex) {
-            if (log != null) {
-                getLog().error(ex.getMessage());
-            }
+            throw new ArtifactPromotingException(ex);
         } catch (IOException ex) {
-            if (log != null) {
-                getLog().error(ex.getMessage());
-            }
+            throw new ArtifactPromotingException(ex);
         } finally {
             try {
                 client.close();
             } catch (IOException ex) {
-                if (log != null) {
-                    getLog().error("Cannot close http client: " + ex.getMessage());
-                }
+                throw new ArtifactPromotingException("Cannot close http client", ex);
             }
         }
         return status;
     }
 
-    private int execute() {
+    private int execute() throws ArtifactPromotingException{
         return execute(null);
     }
 
-    public void promote(Artifact artifact) {
+    public void promote(Artifact artifact) throws ArtifactPromotingException {
       //Example of url http://localhost:8081/nexus/service/local/artifact/maven/content
         
         File af = artifact.getFile();
-        String pathOf = artifact.getRepository().pathOf(artifact);
+        if (artifact.getRepository() != null) {
+        	if (getLog() != null ) getLog().debug("Updating the repository to: " + artifact.getRepository().getId());
+        	artifactRepository = artifact.getRepository();
+        	
+        }
+        
         if (af == null){
-            String pathOfArtifact = artifact.getRepository().pathOf(artifact);
+            String pathOfArtifact = artifactRepository.pathOf(artifact);
             getLog().debug("Path of artifact is " + pathOfArtifact);
             af = Paths.get(pathOfArtifact).toFile();
             if (af == null) {
-                getLog().error("Artifact " + artifact.getArtifactId() + " has no file");
+            	throw new ArtifactPromotingException("Artifact " + artifact.getArtifactId() + " has no file");
             }
-            return;
         }
         String groupId = artifact.getGroupId();
         String artifactId = artifact.getArtifactId();
         String version = artifact.getVersion();
         if (repository == null || repository.length() == 0) {
             getLog().error("Repository cannot be null value");
-            //TODO throw exception here
-            return;
+           throw new ArtifactPromotingException("Repository cannot be null value");
         } else {
             addUrlParameter("r", repository);
         }
@@ -212,9 +210,7 @@ public class MavenHttpClient {
         getLog().debug("Split name: " + Arrays.toString(splitName));
         String extension = splitName[splitName.length - 1].trim();
         if (!extension.equals("jar") && !extension.equals("war") && !extension.equals("ear")) {
-            getLog().error(extension + " is not supported. Currently only jar, war, ear file extensions are supported");
-            //TODO throw exception here
-            return;
+            throw new ArtifactPromotingException(extension + " is not supported. Currently only jar, war, ear file extensions are supported");
         }
         addUrlParameter("e", extension);
         addUrlParameter("g", groupId);
@@ -228,7 +224,7 @@ public class MavenHttpClient {
                 getLog().info("Artifact has been promoted successfully");
             }
         } else if (log != null) {
-            getLog().error("Artifact promotion failed");
+            throw new ArtifactPromotingException("Artifact promotion failed");
         }
     }
 

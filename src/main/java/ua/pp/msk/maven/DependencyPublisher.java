@@ -32,6 +32,8 @@ import org.apache.maven.shared.dependency.graph.traversal.CollectingDependencyNo
 //import org.sonatype.aether.resolution.DependencyResolutionException;
 //import org.sonatype.aether.util.artifact.DefaultArtifact;
 
+import ua.pp.msk.maven.exceptions.ArtifactPromotingException;
+
 /**
  *
  * @author maskimko
@@ -69,6 +71,7 @@ public class DependencyPublisher extends AbstractMojo {
         String version = mavenProject.getVersion();
         getLog().info("Publish goal of Dependency publisher plugin");
         getLog().info(String.format("groupId: %s, artifactId: %s, version: %s", artifactId, groupId, version));
+
         List repositories = mavenProject.getRepositories();
         if (repositories != null && repositories.size() > 0) {
             for (Object o : repositories) {
@@ -76,9 +79,15 @@ public class DependencyPublisher extends AbstractMojo {
                 if (o instanceof Repository) {
                     Repository r = (Repository) o;
                     getLog().info(String.format("Repository id: %s name: %s layout %s url: %s", r.getId(), r.getName(), r.getLayout(), r.getUrl()));
+                    
                 }
             }
         }
+        //Inspecting repositories
+        getLog().debug("Inspecting repositories");
+        RepositoryInspector ri = new RepositoryInspector(mavenProject, getLog());
+        ri.inspect();
+        
         if (artifactFilter == null) {
             getLog().debug("Artifact filter is null. Continue with scope artifact filter");
             ScopeArtifactFilter scopeArtifactFilter = new ScopeArtifactFilter();
@@ -88,16 +97,16 @@ public class DependencyPublisher extends AbstractMojo {
             scopeArtifactFilter.setIncludeSystemScope(true);
             scopeArtifactFilter.setIncludeTestScope(true);
             artifactFilter = scopeArtifactFilter;
-            getLog().info("Filter compile scope: " + scopeArtifactFilter.isIncludeCompileScope());
-            getLog().info("Filter provided scope: " + scopeArtifactFilter.isIncludeProvidedScope());
-            getLog().info("Filter runtime scope: " + scopeArtifactFilter.isIncludeRuntimeScope());
-            getLog().info("Filter system scope: " + scopeArtifactFilter.isIncludeSystemScope());
-            getLog().info("Filter test scope: " + scopeArtifactFilter.isIncludeTestScope());
+            getLog().debug("Filter compile scope: " + scopeArtifactFilter.isIncludeCompileScope());
+            getLog().debug("Filter provided scope: " + scopeArtifactFilter.isIncludeProvidedScope());
+            getLog().debug("Filter runtime scope: " + scopeArtifactFilter.isIncludeRuntimeScope());
+            getLog().debug("Filter system scope: " + scopeArtifactFilter.isIncludeSystemScope());
+            getLog().debug("Filter test scope: " + scopeArtifactFilter.isIncludeTestScope());
         }
-        getLog().info("Got artifact filter class: " + artifactFilter.getClass().getCanonicalName());
+        getLog().debug("Got artifact filter class: " + artifactFilter.getClass().getCanonicalName());
         CollectingDependencyNodeVisitor dependencyNodeVisitor = new CollectingDependencyNodeVisitor();
         if (dependencyGraphBuilder != null) {
-            getLog().info("Got dependency graph builder class: " + dependencyGraphBuilder.getClass().getCanonicalName());
+            getLog().debug("Got dependency graph builder class: " + dependencyGraphBuilder.getClass().getCanonicalName());
 
             try {
                 DependencyNode depNode = dependencyGraphBuilder.buildDependencyGraph(mavenProject, artifactFilter);
@@ -106,7 +115,6 @@ public class DependencyPublisher extends AbstractMojo {
                 getLog().info("Listing the dependencies");
                 for (DependencyNode node : nodes) {
                     getLog().info(String.format("groupId: %s artifactId: %s version %s", node.getArtifact().getGroupId(), node.getArtifact().getArtifactId(), node.getArtifact().getVersion()));
-                    //TODO insert here loginc to publish the artifacts
                     if (promote) {
                         MavenHttpClient mhc = new MavenHttpClient(url);
                         mhc.setLog(getLog());
@@ -123,20 +131,11 @@ public class DependencyPublisher extends AbstractMojo {
 
             } catch (DependencyGraphBuilderException ex) {
                 getLog().error("Got an error when building dependency graph: " + ex.getMessage());
-            }
+            } catch (ArtifactPromotingException e) {
+				getLog().error(e.getMessage());
+			}
         } else {
             getLog().warn("Dependency graph builder is null");
         }
-        /*
-         * jcabi Aether from Sonatype requires lots of dependencies
-         * I think it should be removed in future.
-         */
-//        try {
-//            File repo = repositorySystemSession.getLocalRepository().getBasedir();
-//            Aether a = new Aether(mavenProject, repo);
-//            List<Artifact> artifacts = a.resolve(new DefaultArtifact(groupId, artifactId, "", version), JavaScopes.RUNTIME);
-//        } catch (DependencyResolutionException ex) {
-//            getLog().error("Cannot resolve artifacts: " + ex.getMessage());
-//        }
     }
 }
